@@ -1,8 +1,10 @@
 """Support for VeSync numeric entities."""
+from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import logging
+import time
 
 from pyvesync.base_devices.vesyncbasedevice import VeSyncBaseDevice
 from pyvesync.device_container import DeviceContainer
@@ -17,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .common import is_humidifier
+from .common import is_humidifier, is_evaporative_humidifier
 from .const import VS_DEVICES, VS_DISCOVERY
 from .coordinator import VesyncConfigEntry, VeSyncDataCoordinator
 from .entity import VeSyncBaseEntity
@@ -60,7 +62,9 @@ NUMBER_DESCRIPTIONS: list[VeSyncNumberEntityDescription] = [
         native_max_value_fn=lambda device: max(_mist_levels(device)),
         native_step=1,
         mode=NumberMode.SLIDER,
-        exists_fn=is_humidifier,
+        # Only show Number entity if it is NOT an evaporative humidifier
+        # Evaporative models get the "Fan Level" select entity instead.
+        exists_fn=lambda d: is_humidifier(d) and not is_evaporative_humidifier(d),
         set_value_fn=_set_mist_level,
         value_fn=lambda device: device.state.mist_virtual_level,
     )
@@ -141,4 +145,7 @@ class VeSyncNumberEntity(VeSyncBaseEntity, NumberEntity):
         """Set new value."""
         if not await self.entity_description.set_value_fn(self.device, value):
             raise HomeAssistantError(self.device.last_response.message)
+        if hasattr(self.device.state, "drying_mode_running"):
+            self.coordinator.device_last_action[self.device.cid] = time.time()
+
         self.async_write_ha_state()

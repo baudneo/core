@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .common import rgetattr
+from .common import rgetattr, is_humidifier
 from .const import VS_DEVICES, VS_DISCOVERY
 from .coordinator import VesyncConfigEntry, VeSyncDataCoordinator
 from .entity import VeSyncBaseEntity
@@ -53,6 +53,13 @@ SENSOR_DESCRIPTIONS: tuple[VeSyncBinarySensorEntityDescription, ...] = (
             lambda device: rgetattr(device, "state.water_tank_lifted") is not None
         ),
     ),
+    VeSyncBinarySensorEntityDescription(
+        key="drying_active",
+        translation_key="drying_active",
+        is_on=lambda device: getattr(device.state, "drying_mode_running", False),
+        device_class=BinarySensorDeviceClass.RUNNING,
+        exists_fn=lambda device: is_humidifier(device) and getattr(device, "supports_drying_mode", False),
+    )
 )
 
 

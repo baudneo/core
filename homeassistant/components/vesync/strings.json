@@ -39,6 +39,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "drying_active": {
+        "name": "Drying Active"
+      },
       "water_lacks": {
         "name": "Low water"
       },
@@ -78,6 +81,14 @@
       }
     },
     "select": {
+      "drying_mode": {
+        "name": "Drying Mode",
+        "state": {
+          "off": "[%key:common::state::off%]",
+          "low": "Low",
+          "high": "High"
+        }
+      },
       "night_light_level": {
         "name": "Night light level",
         "state": {
@@ -86,9 +97,20 @@
           "off": "[%key:common::state::off%]",
           "on": "[%key:common::state::on%]"
         }
+      },
+      "fan_level": {
+        "name": "Fan level",
+        "state": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
+        }
       }
     },
     "sensor": {
+      "drying_time_remaining": {
+        "name": "Drying Time Remaining"
+      },
       "air_quality": {
         "name": "Air quality"
       },

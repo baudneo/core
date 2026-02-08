@@ -71,3 +71,7 @@ AIR_FRYER_MODE_MAP = {
     "pullout": "pull_out",
     "standby": "standby",
 }
+
+HUMIDIFIER_DRYING_LEVEL_OFF = "off"
+HUMIDIFIER_DRYING_LEVEL_LOW = "low"
+HUMIDIFIER_DRYING_LEVEL_HIGH = "high"

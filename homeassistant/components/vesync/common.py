@@ -1,4 +1,5 @@
 """Common utilities for VeSync Component."""
+from __future__ import annotations
 
 import logging
 from typing import TypeGuard
@@ -43,6 +44,17 @@ def is_humidifier(device: VeSyncBaseDevice) -> TypeGuard[VeSyncHumidifier]:
     return device.product_type == ProductTypes.HUMIDIFIER
 
 
+def is_evaporative_humidifier(device: VeSyncBaseDevice) -> bool:
+    """Check if the device is an evaporative humidifier (e.g. Levoit 6000S)."""
+    if not is_humidifier(device):
+        return False
+    # LEH : Levoit Evaporative Humidifier ?
+    known_model_str = ["LEH-S601"]
+    # Check for known evaporative models (Levoit Superior 6000S: LEH-S601S-WUS)
+    model = getattr(device, "config_module", "") or getattr(device, "device_type", "")
+    return any(mod_str in model for mod_str in known_model_str)
+
+
 def is_fan(device: VeSyncBaseDevice) -> TypeGuard[VeSyncFanBase]:
     """Check if the device represents a fan."""
 
@@ -56,7 +68,7 @@ def is_outlet(device: VeSyncBaseDevice) -> TypeGuard[VeSyncOutlet]:
 
 
 def is_wall_switch(device: VeSyncBaseDevice) -> TypeGuard[VeSyncWallSwitch]:
-    """Check if the device represents a wall switch, note this doessn't include dimming switches."""
+    """Check if the device represents a wall switch, note this doesn't include dimming switches."""
     if device.product_type != ProductTypes.SWITCH:
         return False
 

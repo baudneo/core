@@ -1,6 +1,8 @@
 """Support for VeSync humidifiers."""
+from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from pyvesync.base_devices.humidifier_base import VeSyncHumidifier
@@ -179,7 +181,9 @@ class VeSyncHumidifierHA(VeSyncBaseEntity[VeSyncHumidifier], HumidifierEntity):
             if self.device.last_response:
                 raise HomeAssistantError(self.device.last_response.message)
             raise HomeAssistantError("Failed to set mode.")
-
+        # Changing mode implies operation. Update timestamp in coordinator.
+        if hasattr(self.device.state, "drying_mode_running"):
+            self.coordinator.device_last_action[self.device.cid] = time.time()
         if mode == MODE_SLEEP:
             # We successfully changed the mode. Consider it a success even if display operation fails.
             await self.device.toggle_display(False)
@@ -193,6 +197,11 @@ class VeSyncHumidifierHA(VeSyncBaseEntity[VeSyncHumidifier], HumidifierEntity):
             if self.device.last_response:
                 raise HomeAssistantError(self.device.last_response.message)
             raise HomeAssistantError("Failed to turn on humidifier.")
+        # Turning on implies operation. Update timestamp in coordinator.
+        if hasattr(self.device.state, "drying_mode_running"):
+            self.coordinator.device_last_action[self.device.cid] = time.time()
+            # Ensure device status is 'on' locally so is_on returns True
+            self.device.state.device_status = "on"
 
         self.async_write_ha_state()
 
@@ -209,4 +218,14 @@ class VeSyncHumidifierHA(VeSyncBaseEntity[VeSyncHumidifier], HumidifierEntity):
     @property
     def is_on(self) -> bool:
         """Return True if device is on."""
+        is_drying = getattr(self.device.state, "drying_mode_running", False)
+        if is_drying:
+            # Check coordinator for manual action timestamp (within ~3 mins)
+            last_action = self.coordinator.device_last_action.get(self.device.cid, 0)
+            if (time.time() - last_action) < 190:
+                # Recently touched -> assume drying is OFF
+                is_drying = False
+        if is_drying:
+            return False
+
         return self.device.state.device_status == "on"

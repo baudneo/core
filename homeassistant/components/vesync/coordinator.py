@@ -24,12 +24,14 @@ class VeSyncDataCoordinator(DataUpdateCoordinator[None]):
 
     config_entry: VesyncConfigEntry
     update_time: datetime | None = None
+    device_last_action: dict[str, float]
 
     def __init__(
         self, hass: HomeAssistant, config_entry: VesyncConfigEntry, manager: VeSync
     ) -> None:
         """Initialize."""
         self.manager = manager
+        self.device_last_action = {}
 
         super().__init__(
             hass,

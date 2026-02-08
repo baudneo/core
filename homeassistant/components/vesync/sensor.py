@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
+import time
 
 from pyvesync.base_devices.vesyncbasedevice import VeSyncBaseDevice
 from pyvesync.device_container import DeviceContainer
@@ -44,11 +45,26 @@ PARALLEL_UPDATES = 0
 class VeSyncSensorEntityDescription(SensorEntityDescription):
     """Describe VeSync sensor entity."""
 
-    value_fn: Callable[[VeSyncBaseDevice], StateType]
+    # Changed: now accepts VeSyncBaseEntity
+    value_fn: Callable[[VeSyncBaseEntity], StateType]
 
     exists_fn: Callable[[VeSyncBaseDevice], bool]
 
     use_device_temperature_unit: bool = False
+
+
+def _get_drying_time_remaining(entity: VeSyncBaseEntity) -> StateType:
+    """Return drying time remaining, respecting optimistic state."""
+    # 1. Check optimistic "forced off" timestamp from coordinator (~3 mins)
+    last_action = entity.coordinator.device_last_action.get(entity.device.cid, 0)
+    if (time.time() - last_action) < 190:
+        return None # Return None (Unknown) if recently turned off manually
+
+    # 2. Fallback to cloud state (seems to only update every 3 minutes)
+    if not getattr(entity.device.state, "drying_mode_running", False):
+        return None
+
+    return getattr(entity.device.state, "drying_mode_seconds_remaining", 0)
 
 
 SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
@@ -58,13 +74,13 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda device: device.state.filter_life,
+        value_fn=lambda entity: entity.device.state.filter_life,
         exists_fn=lambda device: rgetattr(device, "state.filter_life") is not None,
     ),
     VeSyncSensorEntityDescription(
         key="air-quality",
         translation_key="air_quality",
-        value_fn=lambda device: device.state.air_quality_string,
+        value_fn=lambda entity: entity.device.state.air_quality_string,
         exists_fn=(
             lambda device: rgetattr(device, "state.air_quality_string") is not None
         ),
@@ -74,7 +90,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.PM1,
         native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.pm1,
+        value_fn=lambda entity: entity.device.state.pm1,
         exists_fn=lambda device: rgetattr(device, "state.pm1") is not None,
     ),
     VeSyncSensorEntityDescription(
@@ -82,7 +98,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.PM10,
         native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.pm10,
+        value_fn=lambda entity: entity.device.state.pm10,
         exists_fn=lambda device: rgetattr(device, "state.pm10") is not None,
     ),
     VeSyncSensorEntityDescription(
@@ -90,7 +106,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.PM25,
         native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.pm25,
+        value_fn=lambda entity: entity.device.state.pm25,
         exists_fn=lambda device: rgetattr(device, "state.pm25") is not None,
     ),
     VeSyncSensorEntityDescription(
@@ -99,7 +115,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.power,
+        value_fn=lambda entity: entity.device.state.power,
         exists_fn=is_outlet,
     ),
     VeSyncSensorEntityDescription(
@@ -108,7 +124,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda device: device.state.energy,
+        value_fn=lambda entity: entity.device.state.energy,
         exists_fn=is_outlet,
     ),
     VeSyncSensorEntityDescription(
@@ -117,8 +133,8 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda device: getattr(
-            device.state.weekly_history, "totalEnergy", None
+        value_fn=lambda entity: getattr(
+            entity.device.state.weekly_history, "totalEnergy", None
         ),
         exists_fn=is_outlet,
     ),
@@ -128,8 +144,8 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda device: getattr(
-            device.state.monthly_history, "totalEnergy", None
+        value_fn=lambda entity: getattr(
+            entity.device.state.monthly_history, "totalEnergy", None
         ),
         exists_fn=is_outlet,
     ),
@@ -139,8 +155,8 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda device: getattr(
-            device.state.yearly_history, "totalEnergy", None
+        value_fn=lambda entity: getattr(
+            entity.device.state.yearly_history, "totalEnergy", None
         ),
         exists_fn=is_outlet,
     ),
@@ -150,7 +166,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.voltage,
+        value_fn=lambda entity: entity.device.state.voltage,
         exists_fn=is_outlet,
     ),
     VeSyncSensorEntityDescription(
@@ -158,7 +174,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.humidity,
+        value_fn=lambda entity: entity.device.state.humidity,
         exists_fn=is_humidifier,
     ),
     VeSyncSensorEntityDescription(
@@ -166,7 +182,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.temperature,
+        value_fn=lambda entity: entity.device.state.temperature,
         exists_fn=lambda device: (
             is_humidifier(device) and device.state.temperature is not None
         ),
@@ -175,8 +191,8 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         key="cook_status",
         translation_key="cook_status",
         device_class=SensorDeviceClass.ENUM,
-        value_fn=lambda device: AIR_FRYER_MODE_MAP.get(
-            device.state.cook_status.lower(), device.state.cook_status.lower()
+        value_fn=lambda entity: AIR_FRYER_MODE_MAP.get(
+            entity.device.state.cook_status.lower(), entity.device.state.cook_status.lower()
         ),
         exists_fn=is_air_fryer,
         options=[
@@ -196,7 +212,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         use_device_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.current_temp,
+        value_fn=lambda entity: entity.device.state.current_temp,
         exists_fn=is_air_fryer,
     ),
     VeSyncSensorEntityDescription(
@@ -205,7 +221,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         use_device_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda device: device.state.cook_set_temp,
+        value_fn=lambda entity: entity.device.state.cook_set_temp,
         exists_fn=is_air_fryer,
     ),
     VeSyncSensorEntityDescription(
@@ -213,7 +229,7 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         translation_key="cook_set_time",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
-        value_fn=lambda device: device.state.cook_set_time,
+        value_fn=lambda entity: entity.device.state.cook_set_time,
         exists_fn=is_air_fryer,
     ),
     VeSyncSensorEntityDescription(
@@ -221,8 +237,17 @@ SENSORS: tuple[VeSyncSensorEntityDescription, ...] = (
         translation_key="preheat_set_time",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
-        value_fn=lambda device: device.state.preheat_set_time,
+        value_fn=lambda entity: entity.device.state.preheat_set_time,
         exists_fn=is_air_fryer,
+    ),
+    VeSyncSensorEntityDescription(
+        key="drying_time_remaining",
+        translation_key="drying_time_remaining",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.DURATION,
+        exists_fn=lambda device: is_humidifier(device) and getattr(device, "supports_drying_mode", False),
+        value_fn=_get_drying_time_remaining,
     ),
 )
 
@@ -288,7 +313,7 @@ class VeSyncSensorEntity(VeSyncBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.device)
+        return self.entity_description.value_fn(self)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
